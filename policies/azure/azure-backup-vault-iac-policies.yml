@@ -1,0 +1,473 @@
+# Cloud Custodian Shift Left Policies for Azure Backup Vault
+# These policies scan Terraform configurations for backup security misconfigurations
+
+policies:
+  # Recovery Services Vault Policies
+  - name: azure-recovery-vault-soft-delete-enabled
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault has soft delete enabled.
+      Soft delete protects backup data from accidental or malicious deletion.
+    filters:
+      - or:
+        - type: value
+          key: soft_delete_enabled
+          value: false
+        - type: value
+          key: soft_delete_enabled
+          value: absent
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-recovery-vault-geo-redundant-storage
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault uses geo-redundant storage (GRS).
+      GRS provides higher durability by replicating data across Azure regions.
+    filters:
+      - type: value
+        key: storage_mode_type
+        value: LocallyRedundant
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-recovery-vault-cross-region-restore-enabled
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault has cross-region restore enabled for GRS.
+      Cross-region restore enables recovery in secondary region during disasters.
+    filters:
+      - and:
+        - type: value
+          key: storage_mode_type
+          value: GeoRedundant
+        - or:
+          - type: value
+            key: cross_region_restore_enabled
+            value: false
+          - type: value
+            key: cross_region_restore_enabled
+            value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-recovery-vault-public-network-disabled
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault has public network access disabled.
+      Use private endpoints for secure backup operations.
+    filters:
+      - or:
+        - type: value
+          key: public_network_access_enabled
+          value: true
+        - type: value
+          key: public_network_access_enabled
+          value: absent
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-recovery-vault-immutability-enabled
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault has immutability configured.
+      Immutability prevents backup data deletion during retention period.
+    filters:
+      - or:
+        - type: value
+          key: immutability
+          value: Disabled
+        - type: value
+          key: immutability
+          value: absent
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-recovery-vault-managed-identity-required
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault has managed identity enabled.
+      Managed identity is required for customer-managed key encryption.
+    filters:
+      - type: value
+        key: identity
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-recovery-vault-customer-managed-keys
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault uses customer-managed keys for encryption.
+      CMK provides additional control over backup data encryption.
+    filters:
+      - type: value
+        key: encryption
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-recovery-vault-infrastructure-encryption
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault has infrastructure encryption enabled.
+      Double encryption provides additional security layer.
+    filters:
+      - type: value
+        key: encryption[0].infrastructure_encryption_enabled
+        value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-recovery-vault-required-tags
+    resource: terraform.azurerm_recovery_services_vault
+    description: |
+      Ensures Recovery Services Vault has required tags.
+      Required tags: environment, owner, data-classification, compliance
+    filters:
+      - or:
+        - type: value
+          key: tags.owner
+          value: absent
+        - type: value
+          key: tags.data-classification
+          value: absent
+        - type: value
+          key: tags.compliance
+          value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  # Backup Policy VM Policies
+  - name: azure-backup-policy-vm-retention-daily-minimum
+    resource: terraform.azurerm_backup_policy_vm
+    description: |
+      Ensures VM backup policy has minimum daily retention of 30 days.
+      Shorter retention may not meet compliance requirements.
+    filters:
+      - type: value
+        key: retention_daily[0].count
+        value: 30
+        op: lt
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-backup-policy-vm-weekly-retention-required
+    resource: terraform.azurerm_backup_policy_vm
+    description: |
+      Ensures VM backup policy has weekly retention configured.
+      Weekly retention provides recovery points for extended periods.
+    filters:
+      - type: value
+        key: retention_weekly
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-backup-policy-vm-monthly-retention-required
+    resource: terraform.azurerm_backup_policy_vm
+    description: |
+      Ensures VM backup policy has monthly retention configured.
+      Monthly retention is required for most compliance frameworks.
+    filters:
+      - type: value
+        key: retention_monthly
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-backup-policy-vm-yearly-retention-required
+    resource: terraform.azurerm_backup_policy_vm
+    description: |
+      Ensures VM backup policy has yearly retention configured.
+      Yearly retention is required for long-term compliance and audits.
+    filters:
+      - type: value
+        key: retention_yearly
+        value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-backup-policy-vm-instant-restore-retention
+    resource: terraform.azurerm_backup_policy_vm
+    description: |
+      Ensures VM backup policy has adequate instant restore retention.
+      Minimum 5 days recommended for Standard tier vaults.
+    filters:
+      - type: value
+        key: instant_restore_retention_days
+        value: 5
+        op: lt
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-backup-policy-vm-timezone-set
+    resource: terraform.azurerm_backup_policy_vm
+    description: |
+      Ensures VM backup policy has timezone explicitly configured.
+      Explicit timezone prevents confusion in multi-region deployments.
+    filters:
+      - type: value
+        key: timezone
+        value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  # Backup Policy File Share Policies
+  - name: azure-backup-policy-fileshare-retention-minimum
+    resource: terraform.azurerm_backup_policy_file_share
+    description: |
+      Ensures file share backup policy has minimum daily retention of 90 days.
+      File shares often contain critical data requiring longer retention.
+    filters:
+      - type: value
+        key: retention_daily[0].count
+        value: 90
+        op: lt
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-backup-policy-fileshare-weekly-retention-required
+    resource: terraform.azurerm_backup_policy_file_share
+    description: |
+      Ensures file share backup policy has weekly retention configured.
+      Extended retention helps meet compliance requirements.
+    filters:
+      - type: value
+        key: retention_weekly
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-backup-policy-fileshare-monthly-retention-required
+    resource: terraform.azurerm_backup_policy_file_share
+    description: |
+      Ensures file share backup policy has monthly retention configured.
+      Monthly retention provides long-term recovery options.
+    filters:
+      - type: value
+        key: retention_monthly
+        value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-backup-policy-fileshare-timezone-set
+    resource: terraform.azurerm_backup_policy_file_share
+    description: |
+      Ensures file share backup policy has timezone explicitly configured.
+      Explicit timezone ensures consistent backup scheduling.
+    filters:
+      - type: value
+        key: timezone
+        value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  # Storage Account Policies (for backup targets)
+  - name: azure-storage-account-replication-match-vault
+    resource: terraform.azurerm_storage_account
+    description: |
+      Detects storage accounts with replication not matching Recovery Vault.
+      Storage replication should align with vault redundancy strategy.
+    filters:
+      - type: value
+        key: account_replication_type
+        value: LRS
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-storage-account-blob-soft-delete-enabled
+    resource: terraform.azurerm_storage_account
+    description: |
+      Ensures storage accounts have blob soft delete enabled.
+      Soft delete provides recovery from accidental blob deletion.
+    filters:
+      - or:
+        - type: value
+          key: blob_properties[0].delete_retention_policy
+          value: absent
+        - type: value
+          key: blob_properties[0].delete_retention_policy[0].days
+          value: 7
+          op: lt
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-storage-account-versioning-enabled
+    resource: terraform.azurerm_storage_account
+    description: |
+      Ensures storage accounts used for backup have versioning enabled.
+      Versioning provides point-in-time recovery capabilities.
+    filters:
+      - or:
+        - type: value
+          key: blob_properties[0].versioning_enabled
+          value: false
+        - type: value
+          key: blob_properties[0].versioning_enabled
+          value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  # # Private Endpoint Policies
+  # - name: azure-subnet-private-endpoint-policies-disabled
+  #   resource: terraform.azurerm_subnet
+  #   description: |
+  #     Ensures subnets for backup vault private endpoints have policies disabled.
+  #     Network policies must be disabled for private endpoints to work.
+  #   filters:
+  #     - type: value
+  #       key: private_endpoint_network_policies_enabled
+  #       value: true
+  #   metadata:
+  #     severity: HIGH
+  #     creator: Stacklet
+
+  # Key Vault Policies (for backup encryption)
+  # - name: azure-keyvault-soft-delete-retention-90-days
+  #   resource: terraform.azurerm_key_vault
+  #   description: |
+  #     Ensures Key Vault for backup keys has 90-day soft delete retention.
+  #     Longer retention protects encryption keys from accidental deletion.
+  #   filters:
+  #     - type: value
+  #       key: soft_delete_retention_days
+  #       value: 90
+  #       op: lt
+  #   metadata:
+  #     severity: MEDIUM
+  #     creator: Stacklet
+
+  # - name: azure-keyvault-purge-protection-enabled
+  #   resource: terraform.azurerm_key_vault
+  #   description: |
+  #     Ensures Key Vault for backup keys has purge protection enabled.
+  #     Purge protection prevents permanent deletion of encryption keys.
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: purge_protection_enabled
+  #         value: false
+  #       - type: value
+  #         key: purge_protection_enabled
+  #         value: absent
+  #   metadata:
+  #     severity: HIGH
+  #     creator: Stacklet
+
+  # - name: azure-keyvault-network-acls-deny-default
+  #   resource: terraform.azurerm_key_vault
+  #   description: |
+  #     Ensures Key Vault network ACLs default to Deny.
+  #     Restrictive ACLs protect backup encryption keys.
+  #   filters:
+  #     - type: value
+  #       key: network_acls[0].default_action
+  #       value: Allow
+  #   metadata:
+  #     severity: HIGH
+  #     creator: Stacklet
+
+  # - name: azure-keyvault-public-access-disabled
+    # resource: terraform.azurerm_key_vault
+    # description: |
+    #   Ensures Key Vault for backup keys has public access disabled.
+    #   Private endpoints should be used for key access.
+    # filters:
+    #   - or:
+    #     - type: value
+    #       key: public_network_access_enabled
+    #       value: true
+    #     - type: value
+    #       key: public_network_access_enabled
+    #       value: absent
+    # metadata:
+    #   severity: HIGH
+    #   creator: Stacklet
+
+  # Log Analytics Policies
+  - name: azure-log-analytics-retention-minimum-90-days
+    resource: terraform.azurerm_log_analytics_workspace
+    description: |
+      Ensures Log Analytics workspace has minimum 90-day retention.
+      Longer retention meets most compliance requirements for audit logs.
+    filters:
+      - type: value
+        key: retention_in_days
+        value: 90
+        op: lt
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  # Resource Group Policies
+  # - name: azure-resource-group-required-tags
+  #   resource: terraform.azurerm_resource_group
+  #   description: |
+  #     Ensures resource groups have required tags.
+  #     Required tags: environment, owner, cost-center
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: tags.environment
+  #         value: absent
+  #       - type: value
+  #         key: tags.owner
+  #         value: absent
+  #       - type: value
+  #         key: tags.cost-center
+  #         value: absent
+  #   metadata:
+  #     severity: LOW
+  #     creator: Stacklet
+
+  # VM Protection Policies
+  - name: azure-vm-backup-protection-missing
+    resource: terraform.azurerm_linux_virtual_machine
+    description: |
+      Detects VMs that may not have backup protection configured.
+      All production VMs should have backup enabled.
+      Note: This is a warning as protection may be in separate configs.
+    filters:
+      - type: value
+        key: name
+        value: present
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-windows-vm-backup-protection-missing
+    resource: terraform.azurerm_windows_virtual_machine
+    description: |
+      Detects Windows VMs that may not have backup protection configured.
+      All production VMs should have backup enabled.
+      Note: This is a warning as protection may be in separate configs.
+    filters:
+      - type: value
+        key: name
+        value: present
+    metadata:
+      severity: LOW
+      creator: Stacklet

@@ -1,0 +1,429 @@
+# Cloud Custodian Shift Left Policies for Azure Batch
+# These policies scan Terraform configurations for Batch security misconfigurations
+
+policies:
+  # Batch Account Policies
+  - name: azure-batch-public-network-disabled
+    resource: terraform.azurerm_batch_account
+    description: |
+      Ensures Azure Batch Account has public network access disabled.
+      Use private endpoints for secure access to Batch services.
+    filters:
+      - or:
+        - type: value
+          key: public_network_access_enabled
+          value: true
+        - type: value
+          key: public_network_access_enabled
+          value: absent
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-batch-managed-identity-required
+    resource: terraform.azurerm_batch_account
+    description: |
+      Ensures Azure Batch Account has managed identity configured.
+      Managed identity eliminates need for storage account keys.
+    filters:
+      - type: value
+        key: identity
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-batch-storage-authentication-managed-identity
+    resource: terraform.azurerm_batch_account
+    description: |
+      Ensures Batch uses managed identity for storage authentication.
+      Managed identity is more secure than storage keys.
+    filters:
+      - type: value
+        key: storage_account_authentication_mode
+        value: StorageKeys
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-batch-customer-managed-keys
+    resource: terraform.azurerm_batch_account
+    description: |
+      Ensures Azure Batch Account uses customer-managed keys for encryption.
+      CMK provides additional control over data encryption.
+    filters:
+      - type: value
+        key: key_vault_reference
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-batch-authentication-modes-restrictive
+    resource: terraform.azurerm_batch_account
+    description: |
+      Ensures Batch authentication modes are restrictive.
+      SharedKey should be disabled in favor of AAD authentication.
+    filters:
+      - type: value
+        key: allowed_authentication_modes
+        value: "SharedKey"
+        op: in
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-batch-required-tags
+    resource: terraform.azurerm_batch_account
+    description: |
+      Ensures Azure Batch Account has required tags for governance.
+      Required tags: environment, owner, compliance, cost-center
+    filters:
+      - or:
+        - type: value
+          key: tags.owner
+          value: absent
+        - type: value
+          key: tags.compliance
+          value: absent
+        - type: value
+          key: tags.cost-center
+          value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-batch-user-subscription-mode-key-vault
+    resource: terraform.azurerm_batch_account
+    description: |
+      Ensures Batch accounts in UserSubscription mode have Key Vault configured.
+      UserSubscription mode requires Key Vault reference for pool creation.
+    filters:
+      - and:
+        - type: value
+          key: pool_allocation_mode
+          value: UserSubscription
+        - type: value
+          key: key_vault_reference
+          value: absent
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  # Batch Pool Policies
+  - name: azure-batch-pool-autoscale-enabled
+    resource: terraform.azurerm_batch_pool
+    description: |
+      Ensures Batch pools use autoscale for cost optimization.
+      Autoscale adjusts compute resources based on workload demand.
+    filters:
+      - type: value
+        key: auto_scale
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-batch-pool-start-task-non-admin
+    resource: terraform.azurerm_batch_pool
+    description: |
+      Ensures Batch pool start tasks run with non-admin privileges.
+      Admin elevation increases security risk from compromised tasks.
+    filters:
+      - type: value
+        key: start_task[0].user_identity[0].auto_user[0].elevation_level
+        value: Admin
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-batch-pool-network-configuration
+    resource: terraform.azurerm_batch_pool
+    description: |
+      Ensures Batch pools have network configuration for subnet injection.
+      Subnet injection enables private networking and enhanced security.
+    filters:
+      - type: value
+        key: network_configuration
+        value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-batch-pool-no-public-ips
+    resource: terraform.azurerm_batch_pool
+    description: |
+      Ensures Batch pool nodes do not have public IP addresses.
+      Public IPs increase attack surface and security risk.
+    filters:
+      - type: value
+        key: network_configuration[0].public_ip_address_configuration[0].provision
+        value: BatchManaged
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-batch-pool-task-scheduling-pack
+    resource: terraform.azurerm_batch_pool
+    description: |
+      Ensures Batch pools use Pack scheduling for cost optimization.
+      Pack scheduling maximizes node utilization and reduces costs.
+    filters:
+      - type: value
+        key: task_scheduling_policy[0].node_fill_type
+        value: Spread
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-batch-pool-certificate-configured
+    resource: terraform.azurerm_batch_pool
+    description: |
+      Detects Batch pools without certificates for secure communication.
+      Certificates enable encrypted node-to-node communication.
+    filters:
+      - type: value
+        key: certificate
+        value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  # Storage Account Policies (for Batch)
+  # - name: azure-storage-public-access-disabled
+  #   resource: terraform.azurerm_storage_account
+  #   description: |
+  #     Ensures Storage Accounts for Batch have public access disabled.
+  #     Public access exposes data to unauthorized access.
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: public_network_access_enabled
+  #         value: true
+  #       - type: value
+  #         key: public_network_access_enabled
+  #         value: absent
+  #   metadata:
+  #     severity: CRITICAL
+  #     creator: Stacklet
+
+  # - name: azure-storage-minimum-tls-version
+  #   resource: terraform.azurerm_storage_account
+  #   description: |
+  #     Ensures Storage Accounts enforce minimum TLS 1.2.
+  #     TLS 1.0 and 1.1 have known security vulnerabilities.
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: min_tls_version
+  #         value: TLS1_0
+  #       - type: value
+  #         key: min_tls_version
+  #         value: TLS1_1
+  #       - type: value
+  #         key: min_tls_version
+  #         value: absent
+  #   metadata:
+  #     severity: HIGH
+  #     creator: Stacklet
+
+  # - name: azure-storage-https-only
+  #   resource: terraform.azurerm_storage_account
+  #   description: |
+  #     Ensures Storage Accounts enforce HTTPS-only traffic.
+  #     HTTP traffic is unencrypted and vulnerable to interception.
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: enable_https_traffic_only
+  #         value: false
+  #       - type: value
+  #         key: enable_https_traffic_only
+  #         value: absent
+  #   metadata:
+  #     severity: HIGH
+  #     creator: Stacklet
+
+  - name: azure-storage-shared-key-disabled
+    resource: terraform.azurerm_storage_account
+    description: |
+      Ensures Storage Accounts have shared key access disabled.
+      Use managed identities instead of shared keys for better security.
+    filters:
+      - or:
+        - type: value
+          key: shared_access_key_enabled
+          value: true
+        - type: value
+          key: shared_access_key_enabled
+          value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-storage-blob-soft-delete-retention
+    resource: terraform.azurerm_storage_account
+    description: |
+      Ensures Storage Accounts have adequate blob soft delete retention.
+      Minimum 7 days recommended for recovery from accidental deletion.
+    filters:
+      - or:
+        - type: value
+          key: blob_properties[0].delete_retention_policy
+          value: absent
+        - type: value
+          key: blob_properties[0].delete_retention_policy[0].days
+          value: 7
+          op: lt
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  # Key Vault Policies
+  # - name: azure-keyvault-soft-delete-retention-90-days
+  #   resource: terraform.azurerm_key_vault
+  #   description: |
+  #     Ensures Key Vault has 90-day soft delete retention.
+  #     Longer retention protects encryption keys from accidental deletion.
+  #   filters:
+  #     - type: value
+  #       key: soft_delete_retention_days
+  #       value: 90
+  #       op: lt
+  #   metadata:
+  #     severity: MEDIUM
+  #     creator: Stacklet
+
+  # - name: azure-keyvault-purge-protection-enabled
+  #   resource: terraform.azurerm_key_vault
+  #   description: |
+  #     Ensures Key Vault has purge protection enabled.
+  #     Purge protection prevents permanent deletion of keys and secrets.
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: purge_protection_enabled
+  #         value: false
+  #       - type: value
+  #         key: purge_protection_enabled
+  #         value: absent
+  #   metadata:
+  #     severity: HIGH
+  #     creator: Stacklet
+
+  # - name: azure-keyvault-network-acls-deny-default
+  #   resource: terraform.azurerm_key_vault
+  #   description: |
+  #     Ensures Key Vault network ACLs default to Deny.
+  #     Default Deny with explicit allows provides better security posture.
+  #   filters:
+  #     - type: value
+  #       key: network_acls[0].default_action
+  #       value: Allow
+  #   metadata:
+  #     severity: HIGH
+  #     creator: Stacklet
+
+  # - name: azure-keyvault-public-access-disabled
+  #   resource: terraform.azurerm_key_vault
+  #   description: |
+  #     Ensures Key Vault has public access disabled.
+  #     Private endpoints should be used for key access.
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: public_network_access_enabled
+  #         value: true
+  #       - type: value
+  #         key: public_network_access_enabled
+  #         value: absent
+  #   metadata:
+  #     severity: HIGH
+  #     creator: Stacklet
+
+  # Network Security Policies
+  # - name: azure-nsg-no-allow-all-inbound
+  #   resource: terraform.azurerm_network_security_group
+  #   description: |
+  #     Detects NSGs with overly permissive allow-all inbound rules.
+  #     All NSGs should use specific rules based on least privilege.
+  #   filters:
+  #     - type: value
+  #       key: "security_rule[?access=='Allow' && direction=='Inbound' && source_address_prefix=='*' && destination_port_range=='*'].priority"
+  #       value: present
+  #   metadata:
+  #     severity: CRITICAL
+  #     creator: Stacklet
+
+  # - name: azure-nsg-rule-allow-all-inbound
+  #   resource: terraform.azurerm_network_security_rule
+  #   description: |
+  #     Detects standalone NSG rules allowing all inbound traffic.
+  #     Rules should be specific to required ports and sources.
+  #   filters:
+  #     - and:
+  #       - type: value
+  #         key: access
+  #         value: Allow
+  #       - type: value
+  #         key: direction
+  #         value: Inbound
+  #       - type: value
+  #         key: source_address_prefix
+  #         value: "*"
+  #       - type: value
+  #         key: destination_port_range
+  #         value: "*"
+  #   metadata:
+  #     severity: CRITICAL
+  #     creator: Stacklet
+
+  # Subnet Policies
+  - name: azure-subnet-service-endpoints-configured
+    resource: terraform.azurerm_subnet
+    description: |
+      Detects subnets without service endpoints for Azure services.
+      Service endpoints improve security and performance for Azure services.
+    filters:
+      - type: value
+        key: service_endpoints
+        value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  # Log Analytics Policies
+  # - name: azure-log-analytics-retention-minimum-90-days
+  #   resource: terraform.azurerm_log_analytics_workspace
+  #   description: |
+  #     Ensures Log Analytics workspace has minimum 90-day retention.
+  #     Longer retention meets compliance requirements for audit logs.
+  #   filters:
+  #     - type: value
+  #       key: retention_in_days
+  #       value: 90
+  #       op: lt
+  #   metadata:
+  #     severity: MEDIUM
+  #     creator: Stacklet
+
+  # Resource Group Policies
+  # - name: azure-resource-group-required-tags
+  #   resource: terraform.azurerm_resource_group
+  #   description: |
+  #     Ensures resource groups have required tags.
+  #     Required tags: environment, owner, cost-center
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: tags.environment
+  #         value: absent
+  #       - type: value
+  #         key: tags.owner
+  #         value: absent
+  #       - type: value
+  #         key: tags.cost-center
+  #         value: absent
+  #   metadata:
+  #     severity: LOW
+  #     creator: Stacklet

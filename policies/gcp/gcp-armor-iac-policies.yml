@@ -1,0 +1,481 @@
+policies:
+  - name: gcp-armor-no-rate-limiting
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor policies should include rate limiting rules to
+      protect against DDoS and brute force attacks.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # No rules with rate_limit_options
+      - type: value
+        key: rule[?rate_limit_options!=null]
+        value: []
+
+  - name: gcp-armor-excessive-rate-limit
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor rate limiting thresholds should be reasonable.
+      Limits above 1000 requests per minute may be too lenient.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Has rate limit rules
+      - type: value
+        key: rule[?rate_limit_options!=null]
+        op: not-equal
+        value: []
+      # But threshold is too high
+      - type: value
+        key: rule[*].rate_limit_options[0].rate_limit_threshold[0].count
+        op: greater-than
+        value: 1000
+
+  - name: gcp-armor-short-ban-duration
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor ban duration should be substantial (300+ seconds)
+      to be effective against attacks. Short bans allow quick retry.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Has rate_based_ban rules
+      - type: value
+        key: rule[?action=='rate_based_ban']
+        op: not-equal
+        value: []
+      # Ban duration too short (< 5 minutes)
+      - type: value
+        key: rule[*].rate_limit_options[0].ban_duration_sec
+        op: less-than
+        value: 300
+
+  - name: gcp-armor-no-enforce-on-key
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor rate limiting should enforce limits per-client (IP)
+      rather than globally. Missing enforce_on_key reduces effectiveness.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Has rate limiting
+      - type: value
+        key: rule[?rate_limit_options!=null]
+        op: not-equal
+        value: []
+      # But no enforce_on_key specified
+      - type: value
+        key: rule[*].rate_limit_options[0].enforce_on_key
+        value: absent
+
+  - name: gcp-armor-overly-permissive-allow
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should not have high-priority allow rules for all IPs
+      (0.0.0.0/0 or *) as this bypasses other security controls.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # Has allow rules with priority < default (2147483647)
+      - type: value
+        key: rule[?action=='allow' && priority<`2147483647`]
+        op: not-equal
+        value: []
+      # Allow rule matches all IPs
+      - or:
+          - type: value
+            key: rule[?action=='allow'].match[0].config[0].src_ip_ranges[?@=='*']
+            op: not-equal
+            value: []
+          - type: value
+            key: rule[?action=='allow'].match[0].config[0].src_ip_ranges[?@=='0.0.0.0/0']
+            op: not-equal
+            value: []
+
+  - name: gcp-armor-no-owasp-rules
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include OWASP ModSecurity Core Rule Set for
+      protection against common web attacks (SQLi, XSS, etc).
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # No rules using evaluatePreconfiguredExpr for OWASP
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "evaluatePreconfiguredExpr|owasp"
+
+  - name: gcp-armor-no-geo-blocking
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should consider geo-blocking rules to restrict
+      traffic from high-risk regions if not needed globally.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # No rules using origin.region_code
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "origin\\.region_code|inIpRange.*region"
+
+  - name: gcp-armor-no-adaptive-protection
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should enable adaptive protection for automatic
+      detection and mitigation of layer 7 DDoS attacks.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - or:
+          # No adaptive_protection_config
+          - type: value
+            key: adaptive_protection_config
+            value: absent
+          # Adaptive protection not enabled
+          - type: value
+            key: adaptive_protection_config[0].layer_7_ddos_defense_config[0].enable
+            value: false
+
+  - name: gcp-armor-no-logging
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should enable verbose logging for security
+      monitoring, incident response, and compliance.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          # No advanced_options_config
+          - type: value
+            key: advanced_options_config
+            value: absent
+          # Log level not set to VERBOSE
+          - type: value
+            key: advanced_options_config[0].log_level
+            op: not-equal
+            value: VERBOSE
+
+  - name: gcp-armor-no-json-parsing
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should enable JSON parsing for inspecting
+      JSON request bodies in modern API applications.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          # No advanced_options_config
+          - type: value
+            key: advanced_options_config
+            value: absent
+          # JSON parsing not enabled
+          - not:
+              - type: value
+                key: advanced_options_config[0].json_parsing
+                value: STANDARD
+
+  - name: gcp-armor-no-bot-protection
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should configure reCAPTCHA for bot detection
+      and mitigation on sensitive endpoints.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # No rules with redirect to reCAPTCHA
+      - not:
+          - type: value
+            key: rule[*].action
+            op: regex
+            value: "redirect|recaptcha"
+
+  - name: gcp-armor-default-allow-only
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor policies should have specific security rules,
+      not just a default allow rule. This provides no protection.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Only has one rule (the default)
+      - type: value
+        key: rule
+        op: regex
+        value: "^\\[.*\\]$"  # Array with single element
+      # And it's an allow rule with priority 2147483647
+      - type: value
+        key: rule[0].action
+        value: allow
+      - type: value
+        key: rule[0].priority
+        value: 2147483647
+
+  - name: gcp-armor-no-path-protection
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include rules protecting sensitive paths
+      like /admin, /api, /.env, /config, etc.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # No rules checking request.path
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "request\\.path"
+
+  - name: gcp-armor-no-method-restrictions
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should restrict dangerous HTTP methods like
+      TRACE, TRACK, DEBUG, or limit PUT/DELETE to authenticated users.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # No rules checking request.method
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "request\\.method"
+
+  - name: gcp-armor-no-header-validation
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should validate request headers for suspicious
+      patterns (missing User-Agent, invalid Host, etc).
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # No rules checking request.headers
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "request\\.headers|has\\(request\\.headers"
+
+  - name: gcp-armor-rules-not-in-preview
+    resource: terraform.google_compute_security_policy
+    description: >
+      New Cloud Armor rules should be tested in preview mode
+      before enforcement to avoid blocking legitimate traffic.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has non-default rules (priority < 2147483647)
+      - type: value
+        key: rule[?priority<`2147483647`]
+        op: not-equal
+        value: []
+      # But none are in preview mode
+      - type: value
+        key: rule[?preview==`true`]
+        value: []
+
+  - name: gcp-armor-no-description
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor policies and rules should have descriptions
+      explaining their purpose for maintainability.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          # Policy has no description
+          - type: value
+            key: description
+            value: absent
+          # Has rules without descriptions
+          - type: value
+            key: rule[?description==null]
+            op: not-equal
+            value: []
+
+  - name: gcp-armor-conflicting-priorities
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor rule priorities should be well-separated to avoid
+      confusion. Rules with close priorities may conflict.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has multiple non-default rules
+      - type: value
+        key: rule[?priority<`2147483647`]
+        op: regex
+        value: ".*,.*"  # At least 2 rules
+      # Check for priorities within 50 of each other would be complex
+      # This is a simplified check
+
+  - name: gcp-backend-no-armor-policy
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services should have Cloud Armor security policy
+      attached for DDoS protection and WAF capabilities.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - or:
+          # No security_policy specified
+          - type: value
+            key: security_policy
+            value: absent
+          - type: value
+            key: security_policy
+            value: null
+
+  - name: gcp-backend-minimal-armor-policy
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services should use comprehensive Cloud Armor policies,
+      not minimal policies with only default rules.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Has security_policy
+      - type: value
+        key: security_policy
+        op: not-equal
+        value: null
+      # References minimal policy
+      - type: value
+        key: security_policy
+        op: regex
+        value: "minimal|basic|default|simple"
+
+  - name: gcp-armor-no-sql-injection-rules
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include SQL injection protection rules
+      using OWASP signatures or custom expressions.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # No rules checking for SQLi
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "sqli|evaluatePreconfiguredExpr.*sqli|sql.*injection"
+
+  - name: gcp-armor-no-xss-rules
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include XSS (Cross-Site Scripting)
+      protection rules using OWASP signatures.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # No rules checking for XSS
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "xss|evaluatePreconfiguredExpr.*xss|cross.*site"
+
+  - name: gcp-armor-no-lfi-rfi-rules
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include Local/Remote File Inclusion
+      protection rules to prevent path traversal attacks.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # No rules checking for LFI/RFI
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "lfi|rfi|file.*inclusion|path.*traversal|\\.\\.\\/|evaluatePreconfiguredExpr.*lfi"
+
+  - name: gcp-armor-no-rce-rules
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include Remote Code Execution protection
+      rules to prevent command injection attacks.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # No rules checking for RCE
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "rce|remote.*code|command.*injection|evaluatePreconfiguredExpr.*rce"
+
+  - name: gcp-armor-no-protocol-attack-rules
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include protocol attack protection
+      (HTTP/HTTPS anomalies, request smuggling).
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # No rules for protocol attacks
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "protocol.*attack|request.*smuggling|evaluatePreconfiguredExpr.*protocol"
+
+  - name: gcp-armor-no-scanner-detection
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include scanner detection rules to
+      block common security scanning tools and crawlers.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # No rules detecting scanners
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "scanner|crawler|evaluatePreconfiguredExpr.*scanner|user.*agent.*bot"
+
+  - name: gcp-armor-no-session-fixation-rules
+    resource: terraform.google_compute_security_policy
+    description: >
+      Cloud Armor should include session fixation protection
+      rules for authentication endpoints.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # No rules for session attacks
+      - not:
+          - type: value
+            key: rule[*].match[0].expr[0].expression
+            op: regex
+            value: "session.*fixation|evaluatePreconfiguredExpr.*session"

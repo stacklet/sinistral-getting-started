@@ -1,0 +1,16 @@
+policies:
+  - name: azure-vm-account-over-budget
+    resource: terraform.azurerm_linux_virtual_machine
+    description: >
+      Checks to see if an Azure VM has an account tag and if the account is over budget
+      for the current month, if it is creation of the VM is blocked
+    metadata:
+      severity: MEDIUM
+    filters:
+      - type: value
+        key: tag:account_id
+        op: in
+        value_from:
+          expr: query_result.data.rows[*].account_id
+          format: json
+          url: https://redash.demo.stacklet.io/api/queries/700/results.json?api_key=qgGO82ybI1gfocM3bNQKqxgDGUqxA3eFaxSITCoV

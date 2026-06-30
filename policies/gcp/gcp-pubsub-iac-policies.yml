@@ -1,0 +1,345 @@
+policies:
+
+  - name: gcp-pubsub-push-insecure-http
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Push subscriptions should use HTTPS endpoints, not HTTP,
+      to ensure encryption in transit for message delivery.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Has push_config
+      - type: value
+        key: push_config
+        op: not-equal
+        value: null
+      # Push endpoint uses HTTP
+      - type: value
+        key: push_config[0].push_endpoint
+        op: regex
+        value: "^http://"
+
+
+  - name: gcp-pubsub-push-no-authentication
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Push subscriptions should configure OIDC token authentication
+      to verify that requests originate from Pub/Sub service.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # Has push_config
+      - type: value
+        key: push_config
+        op: not-equal
+        value: null
+      # No OIDC token configured
+      - or:
+          - type: value
+            key: push_config[0].oidc_token
+            value: absent
+          - type: value
+            key: push_config[0].oidc_token
+            value: null
+
+  - name: gcp-pubsub-push-no-wrapper
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Push subscriptions should consider using no_wrapper configuration
+      for efficient message processing when appropriate.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has push_config
+      - type: value
+        key: push_config
+        op: not-equal
+        value: null
+      # No wrapper config specified
+      - type: value
+        key: push_config[0].no_wrapper
+        value: absent
+
+  - name: gcp-pubsub-subscription-excessive-retention
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Subscription message retention should be reasonable (typically
+      24-48 hours). Excessive retention increases costs.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Retention greater than 2 days
+      - type: value
+        key: message_retention_duration
+        op: regex
+        value: "^[3-9][0-9]{5}s|^[1-9][0-9]{6,}s"
+
+  - name: gcp-pubsub-subscription-long-ack-deadline
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Subscription acknowledgement deadline too long (> 300 seconds)
+      may delay failure detection and message reprocessing.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: ack_deadline_seconds
+        op: greater-than
+        value: 300
+
+  - name: gcp-pubsub-subscription-missing-labels
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Pub/Sub subscription is missing required environment label or has
+      invalid value (must be production or development).
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: labels.environment
+            value: absent
+          - not:
+              - type: value
+                key: labels.environment
+                op: in
+                value:
+                  - production
+                  - development
+
+  - name: gcp-pubsub-subscription-no-dead-letter
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Pub/Sub subscriptions should configure dead letter topics
+      to handle messages that cannot be processed successfully.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: dead_letter_policy
+            value: absent
+          - type: value
+            key: dead_letter_policy
+            value: null
+
+  - name: gcp-pubsub-subscription-no-exactly-once
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Critical subscriptions should enable exactly-once delivery
+      to prevent duplicate message processing.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: enable_exactly_once_delivery
+            value: absent
+          - type: value
+            key: enable_exactly_once_delivery
+            value: false
+
+  - name: gcp-pubsub-subscription-no-expiration
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Pub/Sub subscriptions should configure expiration policy
+      to automatically delete inactive subscriptions and reduce costs.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: expiration_policy
+            value: absent
+          - type: value
+            key: expiration_policy
+            value: null
+
+  - name: gcp-pubsub-subscription-no-message-ordering
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Subscriptions processing ordered message streams should enable
+      message ordering to maintain sequence guarantees.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: enable_message_ordering
+        value: false
+
+
+  - name: gcp-pubsub-subscription-overly-permissive-role
+    resource: terraform.google_pubsub_subscription_iam_member
+    description: >
+      Pub/Sub subscription IAM should use least-privilege roles.
+      Avoid broad roles like Editor or Owner.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - type: value
+        key: role
+        op: in
+        value:
+          - roles/editor
+          - roles/owner
+          - roles/pubsub.admin
+
+
+  - name: gcp-pubsub-subscription-public-access
+    resource: terraform.google_pubsub_subscription_iam_member
+    description: >
+      Pub/Sub subscriptions should not allow public access (allUsers
+      or allAuthenticatedUsers). Use specific service accounts.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      - type: value
+        key: member
+        op: in
+        value:
+          - allUsers
+          - allAuthenticatedUsers
+
+
+  - name: gcp-pubsub-subscription-retain-acked-messages
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Pub/Sub subscriptions should not retain acknowledged messages
+      unless specifically required, to reduce storage costs.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: retain_acked_messages
+        value: true
+
+
+  - name: gcp-pubsub-subscription-short-ack-deadline
+    resource: terraform.google_pubsub_subscription
+    description: >
+      Subscription acknowledgement deadline too short (< 30 seconds)
+      may cause unnecessary message redeliveries and processing overhead.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: ack_deadline_seconds
+        op: less-than
+        value: 30
+
+  - name: gcp-pubsub-topic-excessive-retention
+    resource: terraform.google_pubsub_topic
+    description: >
+      Pub/Sub topics with excessive message retention periods may
+      incur unnecessary costs and compliance risks. Retention should
+      typically not exceed 24-48 hours unless required.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Retention greater than 2 days (172800 seconds)
+      - type: value
+        key: message_retention_duration
+        op: regex
+        value: "^[3-9][0-9]{5}s|^[1-9][0-9]{6,}s"
+
+
+  - name: gcp-pubsub-topic-no-cmek
+    resource: terraform.google_pubsub_topic
+    description: >
+      Pub/Sub topics should use customer-managed encryption keys (CMEK)
+      instead of Google-managed keys for data at rest encryption.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: kms_key_name
+            value: absent
+          - type: value
+            key: kms_key_name
+            value: null
+
+
+  - name: gcp-pubsub-topic-no-schema
+    resource: terraform.google_pubsub_topic
+    description: >
+      Pub/Sub topics should enforce message schema validation
+      to ensure message format consistency and prevent malformed data.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: schema_settings
+            value: absent
+          - type: value
+            key: schema_settings
+            value: null
+
+  - name: gcp-pubsub-topic-no-storage-policy
+    resource: terraform.google_pubsub_topic
+    description: >
+      Pub/Sub topics should configure message storage policy
+      for regional compliance and data residency requirements.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: message_storage_policy
+            value: absent
+          - type: value
+            key: message_storage_policy
+            value: null
+
+
+  - name: gcp-pubsub-topic-overly-permissive-role
+    resource: terraform.google_pubsub_topic_iam_member
+    description: >
+      Pub/Sub topic IAM should use least-privilege roles.
+      Avoid broad roles like Editor or Owner.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - type: value
+        key: role
+        op: in
+        value:
+          - roles/editor
+          - roles/owner
+          - roles/pubsub.admin
+
+  - name: gcp-pubsub-topic-public-access
+    resource: terraform.google_pubsub_topic_iam_member
+    description: >
+      Pub/Sub topics should not allow public access (allUsers or
+      allAuthenticatedUsers). Use specific service accounts instead.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      - type: value
+        key: member
+        op: in
+        value:
+          - allUsers
+          - allAuthenticatedUsers

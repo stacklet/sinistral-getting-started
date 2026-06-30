@@ -1,0 +1,182 @@
+policies:
+  - name: azure-appgw-missing-connection-draining
+    resource: terraform.azurerm_application_gateway
+    description: >
+      Backend HTTP settings should have connection draining enabled
+      to gracefully handle instance removal and updates.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          # No connection_draining block
+          - type: value
+            key: backend_http_settings[?connection_draining==null]
+            op: not-equal
+            value: []
+          # Connection draining disabled
+          - type: value
+            key: backend_http_settings[?connection_draining.enabled==`false`]
+            op: not-equal
+            value: []
+
+  - name: azure-appgw-missing-sni-requirement
+    resource: terraform.azurerm_application_gateway
+    description: >
+      HTTPS listeners should require SNI (Server Name Indication)
+      for better SSL/TLS security and multi-domain support.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has HTTPS listeners
+      - type: value
+        key: http_listener[?protocol=='Https']
+        op: not-equal
+        value: []
+      # HTTPS listeners without require_sni or set to false
+      - or:
+          - type: value
+            key: http_listener[?protocol=='Https' && require_sni==null]
+            op: not-equal
+            value: []
+          - type: value
+            key: http_listener[?protocol=='Https' && require_sni==`false`]
+            op: not-equal
+            value: []
+
+  - name: azure-appgw-no-autoscaling
+    resource: terraform.azurerm_application_gateway
+    description: >
+      Application Gateways should use autoscaling configuration
+      instead of fixed capacity for better resilience and cost optimization.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: autoscale_configuration
+        value: absent
+
+  - name: azure-appgw-no-health-probes
+    resource: terraform.azurerm_application_gateway
+    description: >
+      Application Gateways should have health probes configured
+      to detect and route around unhealthy backend instances.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          # No probe block at all
+          - type: value
+            key: probe
+            value: absent
+          # Backend settings don't reference probes
+          - type: value
+            key: backend_http_settings[?probe_name==null]
+            op: not-equal
+            value: []
+
+  - name: azure-appgw-no-waf-configuration
+    resource: terraform.azurerm_application_gateway
+    description: >
+      Application Gateways with WAF tier should have WAF configuration
+      or firewall policy enabled for protection.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # Using WAF tier
+      - type: value
+        key: sku[0].tier
+        value: WAF_v2
+      # But missing WAF configuration
+      - type: value
+        key: waf_configuration
+        value: absent
+      - type: value
+        key: firewall_policy_id
+        value: absent
+
+
+  - name: azure-appgw-no-waf-protection
+    resource: terraform.azurerm_application_gateway
+    description: >
+      Application Gateways should use WAF_v2 tier for web application
+      firewall protection against common vulnerabilities and attacks.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - type: value
+        key: sku[0].tier
+        op: not-equal
+        value: WAF_v2
+
+  - name: azure-appgw-unencrypted-backend
+    resource: terraform.azurerm_application_gateway
+    description: >
+      Backend HTTP settings must use HTTPS protocol to ensure
+      end-to-end encryption of traffic.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - type: value
+        key: backend_http_settings[?protocol=='Http']
+        op: not-equal
+        value: []
+
+  - name: azure-appgw-weak-ssl-policy
+    resource: terraform.azurerm_application_gateway
+    description: >
+      Application Gateways using outdated SSL policies that support
+      weak protocols (TLS 1.0/1.1). Should use AppGwSslPolicy20220101 or newer.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - or:
+          # Using old predefined policies
+          - type: value
+            key: ssl_policy[0].policy_name
+            op: in
+            value:
+              - AppGwSslPolicy20150501
+              - AppGwSslPolicy20170401
+              - AppGwSslPolicy20170401S
+          # Using custom policy with TLS 1.0 or 1.1
+          - type: value
+            key: ssl_policy[0].min_protocol_version
+            op: in
+            value:
+              - TLSv1_0
+              - TLSv1_1
+
+  - name: azure-appgw-http-listener-no-redirect
+    resource: terraform.azurerm_application_gateway
+    description: >
+      Identifies Application Gateways with HTTP listeners that are not
+      configured to redirect to HTTPS. All HTTP traffic should redirect
+      to HTTPS for security.
+    metadata:
+      severity: critical
+      creator: Stacklet
+    filters:
+      # Has at least one HTTP listener
+      - type: value
+        key: http_listener[?protocol=='Http'] | length(@)
+        op: greater-than
+        value: 0
+      # Does not have redirect configurations with HTTPS protocol
+      - or:
+          # No redirect configurations at all
+          - type: value
+            key: redirect_configuration
+            value: absent
+          # Has redirect configs but none redirect to HTTPS
+          - type: value
+            key: redirect_configuration[?target_listener_name!=null || protocol=='Https'] | length(@)
+            op: equal
+            value: 0

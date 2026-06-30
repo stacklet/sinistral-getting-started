@@ -1,0 +1,495 @@
+policies:
+  - name: gcp-compute-project-oslogin-disabled
+    resource: terraform.google_compute_project_metadata
+    description: >
+      Compute Engine should enable OS Login at project level for
+      centralized SSH key management and audit logging.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - or:
+          # enable-oslogin not set (defaults to false)
+          - type: value
+            key: metadata.enable-oslogin
+            value: absent
+          # Explicitly set to false/FALSE
+          - type: value
+            key: metadata.enable-oslogin
+            op: regex
+            value: "^(false|FALSE|False|0)$"
+
+  - name: gcp-compute-project-serial-port-enabled
+    resource: terraform.google_compute_project_metadata
+    description: >
+      Serial port access should be disabled at project level unless
+      required for debugging. It provides console access bypass.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Serial port enabled
+      - type: value
+        key: metadata.serial-port-enable
+        op: regex
+        value: "^(1|true|TRUE|True)$"
+
+  - name: gcp-compute-project-hardcoded-ssh-keys
+    resource: terraform.google_compute_project_metadata
+    description: >
+      Project metadata should not contain hardcoded SSH keys.
+      Use OS Login for centralized key management.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # Has ssh-keys metadata
+      - type: value
+        key: metadata.ssh-keys
+        op: not-equal
+        value: null
+
+  - name: gcp-compute-project-hardcoded-secrets
+    resource: terraform.google_compute_project_metadata
+    description: >
+      Project metadata should not contain hardcoded secrets,
+      passwords, or API keys. Use Secret Manager.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Metadata contains secret patterns
+      - type: value
+        key: metadata
+        op: regex
+        value: "password|api_key|secret|credential|token|sk_live|pk_live"
+
+  - name: gcp-compute-metadata-item-hardcoded-secret
+    resource: terraform.google_compute_project_metadata_item
+    description: >
+      Project metadata items should not store secrets.
+      Use Secret Manager for sensitive configuration.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      - or:
+          # Key name suggests secret
+          - type: value
+            key: key
+            op: regex
+            value: "password|secret|api-key|credential|token"
+          # Value contains secret patterns
+          - type: value
+            key: value
+            op: regex
+            value: "password|secret|sk_live|pk_live|AKIA"
+
+  - name: gcp-compute-default-sa-editor-role
+    resource: terraform.google_project_iam_member
+    description: >
+      Default Compute Engine service account should not have Editor
+      or Owner roles. Use least-privilege custom roles.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Default compute service account
+      - type: value
+        key: member
+        op: regex
+        value: "serviceAccount:.*-compute@developer\\.gserviceaccount\\.com"
+      # Has overly broad role
+      - type: value
+        key: role
+        op: in
+        value:
+          - roles/editor
+          - roles/owner
+          - roles/compute.admin
+
+  - name: gcp-compute-firewall-allow-all
+    resource: terraform.google_compute_firewall
+    description: >
+      Firewall rules should not allow all protocols from all IP
+      addresses. Use specific protocols and source ranges.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Allows all protocols
+      - type: value
+        key: allow[*].protocol
+        value: all
+      # From all IPs
+      - type: value
+        key: source_ranges[?@=='0.0.0.0/0']
+        op: not-equal
+        value: []
+
+  - name: gcp-compute-firewall-ssh-from-internet
+    resource: terraform.google_compute_firewall
+    description: >
+      Firewall rules should not allow SSH (port 22) from all IP
+      addresses. Use IAP for SSH access or specific IP ranges.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Allows SSH
+      - type: value
+        key: allow[*].ports
+        op: regex
+        value: "22"
+      # From all IPs
+      - type: value
+        key: source_ranges[?@=='0.0.0.0/0']
+        op: not-equal
+        value: []
+
+  - name: gcp-compute-firewall-rdp-from-internet
+    resource: terraform.google_compute_firewall
+    description: >
+      Firewall rules should not allow RDP (port 3389) from all IP
+      addresses. Use IAP or specific IP ranges for Windows access.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      - type: value
+        key: allow[*].ports
+        op: regex
+        value: "3389"
+      - type: value
+        key: source_ranges[?@=='0.0.0.0/0']
+        op: not-equal
+        value: []
+
+  - name: gcp-compute-firewall-no-logging
+    resource: terraform.google_compute_firewall
+    description: >
+      Firewall rules should enable logging for security monitoring,
+      incident response, and compliance requirements.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: log_config
+            value: absent
+          - type: value
+            key: log_config
+            value: null
+
+  - name: gcp-compute-firewall-disabled
+    resource: terraform.google_compute_firewall
+    description: >
+      Disabled firewall rules should be removed from infrastructure
+      code to reduce clutter and confusion.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: disabled
+        value: true
+
+  - name: gcp-compute-network-auto-mode
+    resource: terraform.google_compute_network
+    description: >
+      VPC networks should use custom mode instead of auto mode
+      for better control over subnet creation and IP ranges.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - type: value
+        key: auto_create_subnetworks
+        value: true
+
+  - name: gcp-compute-subnet-no-private-google-access
+    resource: terraform.google_compute_subnetwork
+    description: >
+      Subnets should enable Private Google Access to allow instances
+      without public IPs to access Google APIs.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - type: value
+        key: private_ip_google_access
+        value: false
+
+  - name: gcp-compute-subnet-no-flow-logs
+    resource: terraform.google_compute_subnetwork
+    description: >
+      Subnets should enable VPC Flow Logs for network monitoring,
+      security analysis, and troubleshooting.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: log_config
+            value: absent
+          - type: value
+            key: log_config
+            value: null
+
+  - name: gcp-compute-nat-no-logging
+    resource: terraform.google_compute_router_nat
+    description: >
+      Cloud NAT should enable logging for monitoring outbound
+      connections and troubleshooting connectivity issues.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: log_config
+            value: absent
+          - type: value
+            key: log_config
+            value: null
+
+  - name: gcp-compute-nat-all-subnets
+    resource: terraform.google_compute_router_nat
+    description: >
+      Cloud NAT should explicitly specify subnets instead of
+      ALL_SUBNETWORKS_ALL_IP_RANGES for better control.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - type: value
+        key: source_subnetwork_ip_ranges_to_nat
+        value: ALL_SUBNETWORKS_ALL_IP_RANGES
+
+  - name: gcp-compute-service-account-admin-role
+    resource: terraform.google_project_iam_member
+    description: >
+      Service accounts should not have compute.admin role.
+      Use specific roles like instanceAdmin, networkAdmin.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - type: value
+        key: member
+        op: regex
+        value: "^serviceAccount:.*compute"
+      - type: value
+        key: role
+        op: in
+        value:
+          - roles/compute.admin
+          - roles/compute.securityAdmin
+          - roles/editor
+          - roles/owner
+
+  - name: gcp-compute-snapshot-short-retention
+    resource: terraform.google_compute_resource_policy
+    description: >
+      Snapshot schedules should retain snapshots for at least 30 days
+      for adequate backup and recovery capabilities.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has snapshot schedule
+      - type: value
+        key: snapshot_schedule_policy
+        op: not-equal
+        value: null
+      # Retention < 30 days
+      - type: value
+        key: snapshot_schedule_policy[0].retention_policy[0].max_retention_days
+        op: less-than
+        value: 30
+
+  - name: gcp-compute-snapshot-no-encryption
+    resource: terraform.google_compute_snapshot
+    description: >
+      Compute Engine snapshots should use customer-managed
+      encryption keys (CMEK) for data at rest.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: snapshot_encryption_key
+            value: absent
+          - type: value
+            key: snapshot_encryption_key
+            value: null
+
+  - name: gcp-compute-health-check-lenient
+    resource: terraform.google_compute_health_check
+    description: >
+      Health check unhealthy_threshold should be 2-3 for quick
+      failure detection. High values delay removing unhealthy instances.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: unhealthy_threshold
+        op: greater-than
+        value: 5
+
+  - name: gcp-compute-health-check-slow
+    resource: terraform.google_compute_health_check
+    description: >
+      Health check interval should be 5-10 seconds for timely
+      detection. Longer intervals delay failure detection.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: check_interval_sec
+        op: greater-than
+        value: 15
+
+  - name: gcp-compute-image-no-encryption
+    resource: terraform.google_compute_image
+    description: >
+      Custom compute images should use customer-managed encryption
+      keys for data at rest security.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: image_encryption_key
+            value: absent
+          - type: value
+            key: image_encryption_key
+            value: null
+
+  - name: gcp-compute-image-no-description
+    resource: terraform.google_compute_image
+    description: >
+      Custom compute images should have descriptions explaining
+      their purpose, contents, and update frequency.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: description
+            value: absent
+          - type: value
+            key: description
+            value: null
+          - type: value
+            key: description
+            value: ""
+
+  - name: gcp-compute-image-no-family
+    resource: terraform.google_compute_image
+    description: >
+      Custom compute images should specify a family for version
+      management and easier image selection.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: family
+            value: absent
+          - type: value
+            key: family
+            value: null
+
+  - name: gcp-compute-address-no-description
+    resource: terraform.google_compute_address
+    description: >
+      Reserved IP addresses should have descriptions explaining
+      their purpose and associated resources.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: description
+            value: absent
+          - type: value
+            key: description
+            value: null
+          - type: value
+            key: description
+            value: ""
+
+  - name: gcp-compute-route-no-description
+    resource: terraform.google_compute_route
+    description: >
+      Custom routes should have descriptions explaining their
+      purpose and destination.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: description
+            value: absent
+          - type: value
+            key: description
+            value: null
+
+  - name: gcp-compute-forwarding-rule-no-target
+    resource: terraform.google_compute_global_forwarding_rule
+    description: >
+      Forwarding rules should specify a target (backend service,
+      target proxy, etc.) to be functional.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - type: value
+        key: target
+        value: absent
+
+  - name: gcp-compute-firewall-overly-broad-range
+    resource: terraform.google_compute_firewall
+    description: >
+      Firewall allow rules should use specific IP ranges instead
+      of large blocks like 10.0.0.0/8 or 172.16.0.0/12.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Is allow rule
+      - type: value
+        key: allow
+        op: not-equal
+        value: null
+      # Has broad source ranges
+      - type: value
+        key: source_ranges
+        op: regex
+        value: "10\\.0\\.0\\.0/8|172\\.16\\.0\\.0/12|192\\.168\\.0\\.0/16"
+
+  - name: gcp-compute-subnet-excessive-secondary-ranges
+    resource: terraform.google_compute_subnetwork
+    description: >
+      Subnets with more than 2 secondary IP ranges may indicate
+      complexity that's hard to manage. Review necessity.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has 3+ secondary ranges
+      - type: value
+        key: secondary_ip_range
+        op: regex
+        value: ".*,.*,.*"  # At least 3 elements

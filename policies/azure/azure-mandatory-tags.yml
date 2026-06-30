@@ -1,0 +1,13 @@
+policies:
+  - name: azure-mandatory-tags
+    resource: "terraform.azurerm*"
+    description: Ensures Azure Terraform resources have name, application, and environment tags
+    metadata:
+      severity: high
+      category: governance
+    filters:
+      - taggable
+      - or:
+          - tags.name: absent
+          - tags.application: absent
+          - tags.environment: absent

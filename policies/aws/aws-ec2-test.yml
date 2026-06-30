@@ -1,0 +1,33 @@
+policies:
+- name: aws-ec2-wrong-instance-type
+  resource: terraform.aws_instance
+  description: >
+    Checks EC2 instance_type value to ensure that it is on the approved list of instance_types 
+    in AssetDB (actually just does a SELECT DISTINCT(instance_type) FROM aws_ec2) and fails
+    if the instance_type isn't found.
+  metadata:
+    severity: MEDIUM
+  filters:
+    - type: value
+      key: instance_type
+      op: not-in
+      value_from:
+        expr: query_result.data.rows[*].instance_type
+        format: json
+        url: https://redash.demo.stacklet.io/api/queries/699/results.json?api_key=ZBdYfZdUOyj9XagNedNwqv4C27Ng11KU2SNfGNmd
+
+- name: aws-ec2-account-over-budget
+  resource: terraform.aws_instance
+  description: >
+    Checks to see if an instance has an account tag and if the account is over budget
+    for the current month, if it is creation of the instance is blocked
+  metadata:
+    severity: MEDIUM
+  filters:
+    - type: value
+      key: tag:account_id
+      op: in
+      value_from:
+        expr: query_result.data.rows[*].account_id
+        format: json
+        url: https://redash.demo.stacklet.io/api/queries/700/results.json?api_key=qgGO82ybI1gfocM3bNQKqxgDGUqxA3eFaxSITCoV

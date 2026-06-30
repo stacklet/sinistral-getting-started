@@ -1,0 +1,394 @@
+# Cloud Custodian Shift Left Policies for Azure WAF
+# These policies scan Terraform configurations for WAF security misconfigurations
+# Excludes policies already created in previous examples
+
+policies:
+  # WAF Policy Policies
+  - name: azure-waf-policy-prevention-mode
+    resource: terraform.azurerm_web_application_firewall_policy
+    description: |
+      Ensures WAF policy is in Prevention mode, not Detection.
+      Detection mode logs threats but does not block them.
+    filters:
+      - type: value
+        key: policy_settings[0].mode
+        value: Detection
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-waf-policy-request-body-check-enabled
+    resource: terraform.azurerm_web_application_firewall_policy
+    description: |
+      Ensures WAF policy has request body inspection enabled.
+      Request body check is essential for detecting attacks in POST data.
+    filters:
+      - or:
+        - type: value
+          key: policy_settings[0].request_body_check
+          value: false
+        - type: value
+          key: policy_settings[0].request_body_check
+          value: absent
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-waf-policy-owasp-version-current
+    resource: terraform.azurerm_web_application_firewall_policy
+    description: |
+      Ensures WAF policy uses current OWASP ruleset version.
+      Version 3.2 provides improved security over older versions.
+    filters:
+      - type: value
+        key: managed_rules[0].managed_rule_set[0].version
+        value: "^3\\.[01]$"
+        op: regex
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-waf-policy-sqli-rules-enabled
+    resource: terraform.azurerm_web_application_firewall_policy
+    description: |
+      Detects WAF policies with SQL injection rules disabled.
+      SQL injection is a critical threat that must be protected against.
+    filters:
+      - type: value
+        key: "managed_rules[0].managed_rule_set[0].rule_group_override[?rule_group_name=='REQUEST-942-APPLICATION-ATTACK-SQLI'].rule[?enabled==false].id"
+        value: present
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-waf-policy-xss-rules-enabled
+    resource: terraform.azurerm_web_application_firewall_policy
+    description: |
+      Detects WAF policies with XSS rules disabled.
+      Cross-site scripting protection is essential for web security.
+    filters:
+      - type: value
+        key: "managed_rules[0].managed_rule_set[0].rule_group_override[?rule_group_name=='REQUEST-941-APPLICATION-ATTACK-XSS'].rule[?enabled==false].id"
+        value: present
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-waf-policy-bot-protection-enabled
+    resource: terraform.azurerm_web_application_firewall_policy
+    description: |
+      Ensures WAF policy has bot protection ruleset enabled.
+      Bot protection defends against automated attacks and scraping.
+    filters:
+      - not:
+        - type: value
+          key: "managed_rules[0].managed_rule_set[?type=='Microsoft_BotManagerRuleSet'].version"
+          value: present
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-waf-policy-rate-limit-configured
+    resource: terraform.azurerm_web_application_firewall_policy
+    description: |
+      Detects WAF policies without rate limiting rules.
+      Rate limiting prevents DDoS and brute force attacks.
+    filters:
+      - not:
+        - type: value
+          key: "custom_rules[?rule_type=='RateLimitRule'].name"
+          value: present
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-waf-policy-exclusions-not-overly-broad
+    resource: terraform.azurerm_web_application_firewall_policy
+    description: |
+      Detects overly broad WAF exclusions that weaken protection.
+      Exclusions should be specific and minimize attack surface.
+    filters:
+      - or:
+        - type: value
+          key: "managed_rules[0].exclusion[?selector_match_operator=='StartsWith'].selector"
+          value: present
+        - type: value
+          key: "managed_rules[0].exclusion[?match_variable=='RequestHeaderNames' && selector=='User-Agent'].selector"
+          value: present
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  # Application Gateway Policies
+  - name: azure-application-gateway-waf-enabled
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Ensures Application Gateway has WAF enabled.
+      WAF provides essential protection against web attacks.
+    filters:
+      - or:
+        - type: value
+          key: waf_configuration[0].enabled
+          value: false
+        - type: value
+          key: waf_configuration[0].enabled
+          value: absent
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-application-gateway-waf-prevention-mode
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Ensures Application Gateway WAF is in Prevention mode.
+      Detection mode does not block attacks.
+    filters:
+      - type: value
+        key: waf_configuration[0].firewall_mode
+        value: Detection
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-application-gateway-waf-request-body-check
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Ensures Application Gateway WAF inspects request bodies.
+      Many attacks are hidden in POST request bodies.
+    filters:
+      - or:
+        - type: value
+          key: waf_configuration[0].request_body_check
+          value: false
+        - type: value
+          key: waf_configuration[0].request_body_check
+          value: absent
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-application-gateway-waf-ruleset-current
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Ensures Application Gateway uses current WAF ruleset version.
+      OWASP 3.2 provides improved protection over older versions.
+    filters:
+      - type: value
+        key: waf_configuration[0].rule_set_version
+        value: "^[12]\\.|^3\\.[01]$"
+        op: regex
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-application-gateway-waf-rules-not-disabled
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Detects Application Gateway with critical WAF rules disabled.
+      Disabling rules weakens security posture significantly.
+    filters:
+      - type: value
+        key: waf_configuration[0].disabled_rule_group
+        value: present
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-application-gateway-autoscale-configured
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Ensures Application Gateway uses autoscale instead of fixed capacity.
+      Autoscale provides better availability and cost optimization.
+    filters:
+      - and:
+        - type: value
+          key: sku[0].capacity
+          value: present
+        - type: value
+          key: autoscale_configuration
+          value: absent
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-application-gateway-ssl-policy-configured
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Ensures Application Gateway has SSL policy configured.
+      SSL policy enforces minimum TLS version and cipher suites.
+    filters:
+      - type: value
+        key: ssl_policy
+        value: absent
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-application-gateway-http-listener-https-only
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Detects HTTP listeners that should be HTTPS.
+      All production traffic should use HTTPS for encryption.
+    filters:
+      - type: value
+        key: "http_listener[?protocol=='Http'].name"
+        value: present
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-application-gateway-backend-https
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Ensures backend connections use HTTPS.
+      End-to-end encryption protects data in transit.
+    filters:
+      - type: value
+        key: "backend_http_settings[?protocol=='Http'].name"
+        value: present
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-application-gateway-connection-draining
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Ensures Application Gateway has connection draining enabled.
+      Connection draining prevents dropped connections during updates.
+    filters:
+      - type: value
+        key: backend_http_settings[0].connection_draining
+        value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-application-gateway-ssl-certificate-no-hardcoded-password
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Detects SSL certificates with hardcoded passwords.
+      Passwords should be stored in Key Vault.
+    filters:
+      - type: value
+        key: "ssl_certificate[*].password"
+        value: present
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-application-gateway-redirect-http-to-https
+    resource: terraform.azurerm_application_gateway
+    description: |
+      Detects HTTP routing rules without HTTPS redirect.
+      HTTP traffic should redirect to HTTPS.
+    filters:
+      - and:
+        - type: value
+          key: "request_routing_rule[?http_listener_name].http_listener_name"
+          value: present
+        - not:
+          - type: value
+            key: "redirect_configuration[*].redirect_type"
+            value: Permanent
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  # Front Door WAF Policies
+  - name: azure-frontdoor-waf-prevention-mode
+    resource: terraform.azurerm_cdn_frontdoor_firewall_policy
+    description: |
+      Ensures Front Door WAF policy is in Prevention mode.
+      Detection mode logs but does not block threats.
+    filters:
+      - type: value
+        key: mode
+        value: Detection
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-frontdoor-waf-enabled
+    resource: terraform.azurerm_cdn_frontdoor_firewall_policy
+    description: |
+      Ensures Front Door WAF policy is enabled.
+      Disabled WAF provides no protection.
+    filters:
+      - or:
+        - type: value
+          key: enabled
+          value: false
+        - type: value
+          key: enabled
+          value: absent
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-frontdoor-waf-sqli-protection-enabled
+    resource: terraform.azurerm_cdn_frontdoor_firewall_policy
+    description: |
+      Detects Front Door WAF with SQL injection protection disabled.
+      SQL injection is a top web application threat.
+    filters:
+      - type: value
+        key: "managed_rule[?type=='DefaultRuleSet'].override[?rule_group_name=='SQLI'].rule[?enabled==false].rule_id"
+        value: present
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-frontdoor-waf-bot-protection-not-disabled
+    resource: terraform.azurerm_cdn_frontdoor_firewall_policy
+    description: |
+      Ensures Front Door WAF bot protection rules are enabled.
+      Bot protection prevents automated attacks and abuse.
+    filters:
+      - type: value
+        key: "managed_rule[?type=='Microsoft_BotManagerRuleSet'].override[*].rule[?enabled==false].rule_id"
+        value: present
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-frontdoor-waf-rate-limiting-configured
+    resource: terraform.azurerm_cdn_frontdoor_firewall_policy
+    description: |
+      Detects Front Door WAF without rate limiting rules.
+      Rate limiting prevents DDoS and brute force attacks.
+    filters:
+      - not:
+        - type: value
+          key: "custom_rule[?type=='RateLimitRule'].name"
+          value: present
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-frontdoor-waf-geo-filtering-configured
+    resource: terraform.azurerm_cdn_frontdoor_firewall_policy
+    description: |
+      Detects Front Door WAF without geo-filtering rules.
+      Geo-filtering blocks traffic from unauthorized regions.
+    filters:
+      - not:
+        - type: value
+          key: "custom_rule[?match_condition[*].match_variable=='RemoteAddr'].name"
+          value: present
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  # Front Door Profile Policies
+  - name: azure-frontdoor-premium-sku-for-waf
+    resource: terraform.azurerm_cdn_frontdoor_profile
+    description: |
+      Ensures Front Door uses Premium SKU when WAF is needed.
+      WAF requires Premium SKU for full functionality.
+    filters:
+      - type: value
+        key: sku_name
+        value: Standard_AzureFrontDoor
+    metadata:
+      severity: HIGH
+      creator: Stacklet

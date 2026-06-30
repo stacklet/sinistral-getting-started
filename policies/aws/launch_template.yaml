@@ -1,0 +1,42 @@
+policies:
+  - name: launch-template-using-gp2-volume
+    resource: terraform.aws_launch_template
+    mode:
+      type: terraform-source
+    description: >
+      For better performance and cost efficiency, use gp3 volumes instead of gp2.
+    metadata:
+      category:
+        - efficient-ebs-usage
+      severity: HIGH
+    filters:
+      - or:
+          - type: value
+            op: equal
+            key: block_device_mappings.ebs.volume_type
+            value: gp2
+
+  - name: launch-config-using-gp2-volume
+    resource: terraform.aws_launch_configuration
+    mode:
+      type: terraform-source
+    description: >
+      For better performance and cost efficiency, use gp3 volumes instead of gp2.
+    metadata:
+      category:
+        - efficient-ebs-usage
+      severity: HIGH
+    filters:
+      - or:
+          - type: value
+            op: equal
+            key: root_block_device.volume_type
+            value: gp2
+          - type: value
+            op: equal
+            key: ebs_block_device.volume_type
+            value: gp2
+          - type: value
+            op: equal
+            key: ephemeral_block_device.volume_type
+            value: gp2

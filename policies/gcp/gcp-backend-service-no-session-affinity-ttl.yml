@@ -1,0 +1,23 @@
+policies:
+  - name: gcp-backend-service-no-session-affinity-ttl
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services using session affinity should configure
+      appropriate cookie TTL for security and session management.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has session affinity enabled
+      - type: value
+        key: session_affinity
+        op: not-equal
+        value: NONE
+      # But no TTL configured
+      - or:
+          - type: value
+            key: affinity_cookie_ttl_sec
+            value: absent
+          - type: value
+            key: affinity_cookie_ttl_sec
+            value: 0

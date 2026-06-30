@@ -1,0 +1,18 @@
+policies:
+  - name: forbid-inline-iam-role-policy
+    resource: 
+      - terraform.aws_iam_role_policy
+      - terraform.aws_iam_role
+    description: >
+      Inline IAM role policies (aws_iam_role_policy) are not allowed as some customers only allow the use of managed policies.
+      Use a standalone aws_iam_policy plus aws_iam_role_policy_attachment instead.
+    metadata:
+      severity: LOW
+      category: Inline Policies
+      provider: aws
+    mode:
+      type: terraform-source
+    filters:
+      - or:
+          - role: not-null
+          - inline_policy: not-null

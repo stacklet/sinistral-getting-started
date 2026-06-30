@@ -1,0 +1,10 @@
+policies:
+  - name: cloudwatch-specify-log-retention
+    resource: terraform.aws_cloudwatch_log_group
+    description: >
+      Identify CloudWatch Log Groups which don't have a retention policy set.
+    metadata:
+      severity: low
+      creator: Stacklet
+    filters:
+      - retention_in_days: empty

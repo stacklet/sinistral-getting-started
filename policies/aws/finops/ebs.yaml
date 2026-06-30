@@ -1,0 +1,16 @@
+policies:
+  - name: ebs-gp2-volume
+    resource: terraform.aws_ebs_volume
+    mode:
+      type: terraform-source
+    description: >
+      For better performance and cost efficiency, use gp3 volumes instead of gp2.
+    metadata:
+      category:
+        - efficient-ebs-usage
+      severity: HIGH
+    filters:
+      - type: value
+        op: equal
+        key: type
+        value: gp2

@@ -1,0 +1,22 @@
+policies:
+
+- name: terraform-gcp-labels
+  description: >
+      Tagging and labels are foundational to good governance
+  metadata:
+      severity: medium
+      category: Best Practices
+  resource: terraform.google_compute_instance
+  filters:
+  - or:
+      - not:
+        - type: value
+          key: labels
+          op: contains
+          value: "application name"
+      - not:
+        - type: value
+          key: labels
+          op: contains
+          value: environment
+  

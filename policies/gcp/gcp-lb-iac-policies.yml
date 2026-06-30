@@ -1,0 +1,292 @@
+policies:
+
+  - name: gcp-lb-overly-permissive-firewall
+    resource: terraform.google_compute_firewall
+    description: >
+      Firewall rules for load balancers should restrict source ranges
+      to GCP load balancer IP ranges, not 0.0.0.0/0 (entire internet).
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # Allows traffic from anywhere
+      - type: value
+        key: source_ranges[?@=='0.0.0.0/0']
+        op: not-equal
+        value: []
+      # Has port 80 or 443 in allowed ports
+      - or:
+          - type: value
+            key: allow[*].ports
+            op: regex
+            value: "80|443"
+
+  - name: gcp-lb-no-firewall-logging
+    resource: terraform.google_compute_firewall
+    description: >
+      Firewall rules should enable logging for security monitoring
+      and compliance requirements.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: log_config
+            value: absent
+          - type: value
+            key: log_config[0].metadata
+            value: EXCLUDE_ALL_METADATA
+
+  - name: gcp-lb-no-url-redirect
+    resource: terraform.google_compute_url_map
+    description: >
+      URL maps should configure HTTP to HTTPS redirects for
+      security. Found URL maps without redirect configuration.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # No default URL redirect configured
+      - type: value
+        key: default_url_redirect
+        value: absent
+      # No host rules with redirects
+      - type: value
+        key: host_rule
+        value: absent
+
+  - name: gcp-lb-http-without-redirect
+    resource: terraform.google_compute_global_forwarding_rule
+    description: >
+      HTTP forwarding rules should redirect to HTTPS. Found HTTP
+      forwarding rules without HTTPS redirect configuration.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Port 80 forwarding rule
+      - type: value
+        key: port_range
+        op: in
+        value:
+          - "80"
+          - "80-80"
+      # Points to HTTP proxy (not HTTPS)
+      - type: value
+        key: target
+        op: regex
+        value: "google_compute_target_http_proxy"
+
+  - name: gcp-lb-too-many-ports-exposed
+    resource: terraform.google_compute_firewall
+    description: >
+      Firewall rules should minimize exposed ports. Found rules
+      exposing non-standard ports beyond 80 and 443.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Has more than 2 ports or non-standard ports
+      - type: value
+        key: allow[0].ports
+        op: regex
+        value: "8080|8443|[0-9]{5}"
+
+  - name: gcp-lb-no-security-headers
+    resource: terraform.google_compute_url_map
+    description: >
+      URL maps should configure security headers in response
+      (HSTS, X-Frame-Options, CSP, etc.) via header actions.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: default_route_action
+            value: absent
+          - type: value
+            key: default_route_action[0].header_action
+            value: absent
+
+  - name: gcp-lb-hardcoded-ssl-certificate
+    resource: terraform.google_compute_ssl_certificate
+    description: >
+      SSL certificates should use Secret Manager or managed certificates
+      instead of hardcoded file paths for private keys.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Has private_key field (not using managed cert)
+      - type: value
+        key: private_key
+        op: not-equal
+        value: null
+      # Using file() function - hardcoded path
+      - type: value
+        key: private_key
+        op: regex
+        value: "file\\("
+
+  - name: gcp-lb-lenient-health-thresholds
+    resource: terraform.google_compute_health_check
+    description: >
+      Health check unhealthy threshold should not exceed 3-5 attempts.
+      High values delay detection of unhealthy backends.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: unhealthy_threshold
+        op: greater-than
+        value: 5
+
+  - name: gcp-lb-no-access-logging
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services should enable access logging for security
+      monitoring, debugging, and compliance requirements.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: log_config
+            value: absent
+          - type: value
+            key: log_config[0].enable
+            value: false
+
+  - name: gcp-lb-no-cdn
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services serving static content should enable Cloud CDN
+      for improved performance and reduced backend load.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: enable_cdn
+            value: absent
+          - type: value
+            key: enable_cdn
+            value: false
+
+  - name: gcp-lb-no-cloud-armor
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services should have Cloud Armor security policy
+      attached for WAF protection and DDoS mitigation.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: security_policy
+            value: absent
+          - type: value
+            key: security_policy
+            value: null
+
+  - name: gcp-lb-no-connection-draining
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services should configure connection draining timeout
+      for graceful connection handling during backend changes.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: connection_draining_timeout_sec
+            value: absent
+          - type: value
+            key: connection_draining_timeout_sec
+            value: 0
+
+  - name: gcp-lb-no-iap
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services should enable Identity-Aware Proxy (IAP)
+      for zero-trust access control to applications.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: iap
+            value: absent
+          - type: value
+            key: iap[0].enabled
+            value: false
+
+  - name: gcp-lb-unencrypted-backend
+    resource: terraform.google_compute_backend_service
+    description: >
+      Backend services should use HTTPS protocol to ensure
+      end-to-end encryption of traffic to backends.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - type: value
+        key: protocol
+        op: in
+        value:
+          - HTTP
+          - HTTP2
+
+  - name: gcp-lb-weak-health-check
+    resource: terraform.google_compute_health_check
+    description: >
+      Health checks should use HTTPS protocol instead of HTTP
+      for secure backend health monitoring.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Has HTTP health check instead of HTTPS
+      - type: value
+        key: http_health_check
+        op: not-equal
+        value: null
+      # No HTTPS health check configured
+      - type: value
+        key: https_health_check
+        value: absent
+
+  - name: gcp-lb-weak-ssl-policy
+    resource: terraform.google_compute_ssl_policy
+    description: >
+      SSL policies should use MODERN or RESTRICTED profile with
+      minimum TLS 1.2. COMPATIBLE profile allows weak TLS 1.0/1.1.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - or:
+          # Using COMPATIBLE profile (weak)
+          - type: value
+            key: profile
+            value: COMPATIBLE
+          # Using TLS 1.0 or 1.1
+          - type: value
+            key: min_tls_version
+            op: in
+            value:
+              - TLS_1_0
+              - TLS_1_1
+          # Custom profile with weak ciphers
+          - type: value
+            key: profile
+            value: CUSTOM
+

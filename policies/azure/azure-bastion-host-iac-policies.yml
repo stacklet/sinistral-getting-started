@@ -1,0 +1,465 @@
+# Cloud Custodian Shift Left Policies for Azure Bastion Host
+# These policies scan Terraform configurations for Bastion security misconfigurations
+
+policies:
+  # Bastion Host Policies
+  - name: azure-bastion-standard-sku-required
+    resource: terraform.azurerm_bastion_host
+    description: |
+      Ensures Azure Bastion uses Standard SKU instead of Basic.
+      Standard SKU provides enhanced features like file copy, IP connect, and tunneling.
+    filters:
+      - type: value
+        key: sku
+        value: Basic
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-bastion-copy-paste-enabled
+    resource: terraform.azurerm_bastion_host
+    description: |
+      Ensures Azure Bastion has copy/paste enabled for usability.
+      Copy/paste improves productivity while maintaining security.
+    filters:
+      - and:
+        - type: value
+          key: sku
+          value: Standard
+        - or:
+          - type: value
+            key: copy_paste_enabled
+            value: false
+          - type: value
+            key: copy_paste_enabled
+            value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-bastion-file-copy-enabled
+    resource: terraform.azurerm_bastion_host
+    description: |
+      Ensures Azure Bastion has file copy enabled for Standard SKU.
+      File copy enables secure file transfer to VMs via Bastion.
+    filters:
+      - and:
+        - type: value
+          key: sku
+          value: Standard
+        - or:
+          - type: value
+            key: file_copy_enabled
+            value: false
+          - type: value
+            key: file_copy_enabled
+            value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-bastion-tunneling-enabled
+    resource: terraform.azurerm_bastion_host
+    description: |
+      Ensures Azure Bastion has tunneling enabled for native client access.
+      Tunneling allows Azure CLI and PowerShell connections via Bastion.
+    filters:
+      - and:
+        - type: value
+          key: sku
+          value: Standard
+        - or:
+          - type: value
+            key: tunneling_enabled
+            value: false
+          - type: value
+            key: tunneling_enabled
+            value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  - name: azure-bastion-shareable-link-disabled
+    resource: terraform.azurerm_bastion_host
+    description: |
+      Ensures Azure Bastion has shareable link disabled for security.
+      Shareable links can create unauthorized access if leaked.
+    filters:
+      - type: value
+        key: shareable_link_enabled
+        value: true
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-bastion-scale-units-configured
+    resource: terraform.azurerm_bastion_host
+    description: |
+      Ensures Azure Bastion has scale units configured for high availability.
+      Scale units provide capacity for concurrent sessions (2-50 units).
+    filters:
+      - and:
+        - type: value
+          key: sku
+          value: Standard
+        - or:
+          - type: value
+            key: scale_units
+            value: absent
+          - type: value
+            key: scale_units
+            value: 2
+            op: lt
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  - name: azure-bastion-required-tags
+    resource: terraform.azurerm_bastion_host
+    description: |
+      Ensures Azure Bastion has required tags for governance.
+      Required tags: environment, owner, compliance, cost-center
+    filters:
+      - or:
+        - type: value
+          key: tags.owner
+          value: absent
+        - type: value
+          key: tags.compliance
+          value: absent
+        - type: value
+          key: tags.cost-center
+          value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet
+
+  # Subnet Policies for Bastion
+  - name: azure-bastion-subnet-naming-convention
+    resource: terraform.azurerm_subnet
+    description: |
+      Ensures Azure Bastion subnet uses the required name "AzureBastionSubnet".
+      Azure Bastion requires this exact subnet name to function.
+    filters:
+      - and:
+        - type: value
+          key: name
+          value: "(?i)(bastion)"
+          op: regex
+        - not:
+          - type: value
+            key: name
+            value: AzureBastionSubnet
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-bastion-subnet-minimum-size
+    resource: terraform.azurerm_subnet
+    description: |
+      Ensures Azure Bastion subnet has minimum /26 address space.
+      Smaller subnets may not support required Bastion infrastructure.
+    filters:
+      - and:
+        - type: value
+          key: name
+          value: AzureBastionSubnet
+        - type: value
+          key: address_prefixes[0]
+          value: "/2[7-9]|/[3-9][0-9]"
+          op: regex
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-bastion-subnet-no-service-endpoints
+    resource: terraform.azurerm_subnet
+    description: |
+      Ensures Azure Bastion subnet does not have service endpoints.
+      Service endpoints are not needed and can complicate routing.
+    filters:
+      - and:
+        - type: value
+          key: name
+          value: AzureBastionSubnet
+        - type: value
+          key: service_endpoints
+          value: present
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  # Network Security Group Policies
+  - name: azure-nsg-bastion-allow-gatewaymanager-inbound
+    resource: terraform.azurerm_network_security_group
+    description: |
+      Detects NSGs potentially for Bastion missing GatewayManager inbound rule.
+      Azure Bastion requires inbound 443 from GatewayManager service tag.
+    filters:
+      - type: value
+        key: name
+        value: "(?i)(bastion)"
+        op: regex
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-nsg-bastion-allow-internet-inbound
+    resource: terraform.azurerm_network_security_group
+    description: |
+      Detects NSGs potentially for Bastion missing Internet inbound rule.
+      Azure Bastion requires inbound 443 from Internet for user access.
+    filters:
+      - type: value
+        key: name
+        value: "(?i)(bastion)"
+        op: regex
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  # - name: azure-nsg-no-allow-all-inbound
+  #   resource: terraform.azurerm_network_security_group
+  #   description: |
+  #     Detects NSGs with overly permissive allow-all inbound rules.
+  #     All NSGs should use specific rules based on least privilege.
+  #   filters:
+  #     - type: value
+  #       key: "security_rule[?access=='Allow' && direction=='Inbound' && source_address_prefix=='*' && destination_port_range=='*'].priority"
+  #       value: present
+  #   metadata:
+  #     severity: CRITICAL
+  #     creator: Stacklet
+
+  - name: azure-nsg-rule-allow-all-inbound
+    resource: terraform.azurerm_network_security_rule
+    description: |
+      Detects standalone NSG rules allowing all inbound traffic.
+      Rules should be specific to required ports and sources.
+    filters:
+      - and:
+        - type: value
+          key: access
+          value: Allow
+        - type: value
+          key: direction
+          value: Inbound
+        - type: value
+          key: source_address_prefix
+          value: "*"
+        - type: value
+          key: destination_port_range
+          value: "*"
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-nsg-allow-ssh-from-internet
+    resource: terraform.azurerm_network_security_group
+    description: |
+      Detects NSGs allowing SSH from Internet (should only allow from Bastion).
+      VMs should only be accessible via Bastion, not directly from Internet.
+    filters:
+      - type: value
+        key: "security_rule[?access=='Allow' && direction=='Inbound' && destination_port_range=='22' && source_address_prefix=='Internet'].priority"
+        value: present
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-nsg-rule-allow-ssh-from-internet
+    resource: terraform.azurerm_network_security_rule
+    description: |
+      Detects standalone rules allowing SSH from Internet.
+      SSH should only be allowed from Bastion subnet.
+    filters:
+      - and:
+        - type: value
+          key: access
+          value: Allow
+        - type: value
+          key: direction
+          value: Inbound
+        - type: value
+          key: destination_port_range
+          value: "22"
+        - type: value
+          key: source_address_prefix
+          value: Internet
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-nsg-allow-rdp-from-internet
+    resource: terraform.azurerm_network_security_group
+    description: |
+      Detects NSGs allowing RDP from Internet (should only allow from Bastion).
+      Windows VMs should only be accessible via Bastion, not directly from Internet.
+    filters:
+      - type: value
+        key: "security_rule[?access=='Allow' && direction=='Inbound' && destination_port_range=='3389' && source_address_prefix=='Internet'].priority"
+        value: present
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  - name: azure-nsg-rule-allow-rdp-from-internet
+    resource: terraform.azurerm_network_security_rule
+    description: |
+      Detects standalone rules allowing RDP from Internet.
+      RDP should only be allowed from Bastion subnet.
+    filters:
+      - and:
+        - type: value
+          key: access
+          value: Allow
+        - type: value
+          key: direction
+          value: Inbound
+        - type: value
+          key: destination_port_range
+          value: "3389"
+        - type: value
+          key: source_address_prefix
+          value: Internet
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+
+  # Public IP Policies
+  - name: azure-bastion-public-ip-standard-sku
+    resource: terraform.azurerm_public_ip
+    description: |
+      Ensures Public IP for Bastion uses Standard SKU.
+      Standard SKU is required for Azure Bastion.
+    filters:
+      - and:
+        - type: value
+          key: name
+          value: "(?i)(bastion)"
+          op: regex
+        - not:
+          - type: value
+            key: sku
+            value: Standard
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-bastion-public-ip-static-allocation
+    resource: terraform.azurerm_public_ip
+    description: |
+      Ensures Public IP for Bastion uses Static allocation.
+      Static allocation is required for Azure Bastion.
+    filters:
+      - and:
+        - type: value
+          key: name
+          value: "(?i)(bastion)"
+          op: regex
+        - not:
+          - type: value
+            key: allocation_method
+            value: Static
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-public-ip-ddos-protection-enabled
+    resource: terraform.azurerm_public_ip
+    description: |
+      Ensures Public IPs have DDoS protection enabled.
+      DDoS protection prevents denial of service attacks.
+    filters:
+      - or:
+        - type: value
+          key: ddos_protection_mode
+          value: absent
+        - type: value
+          key: ddos_protection_mode
+          value: VirtualNetworkInherited
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  # VM Policies (VMs should not have public IPs when using Bastion)
+  - name: azure-vm-no-public-ip-with-bastion
+    resource: terraform.azurerm_network_interface
+    description: |
+      Detects VMs with public IPs when Bastion is available.
+      VMs should only be accessed via Bastion, not direct public IPs.
+    filters:
+      - type: value
+        key: ip_configuration[0].public_ip_address_id
+        value: present
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+
+  - name: azure-vm-public-ip-unnecessary
+    resource: terraform.azurerm_public_ip
+    description: |
+      Detects public IPs for VMs when Bastion should be used.
+      Public IPs on VMs bypass Bastion security controls.
+    filters:
+      - type: value
+        key: name
+        value: "(?i)(vm|server|host)"
+        op: regex
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+
+  # Log Analytics Policies
+  # - name: azure-log-analytics-retention-minimum-90-days
+  #   resource: terraform.azurerm_log_analytics_workspace
+  #   description: |
+  #     Ensures Log Analytics workspace has minimum 90-day retention.
+  #     Longer retention meets compliance requirements for audit logs.
+  #   filters:
+  #     - type: value
+  #       key: retention_in_days
+  #       value: 90
+  #       op: lt
+  #   metadata:
+  #     severity: MEDIUM
+  #     creator: Stacklet
+
+  # Resource Group Policies
+  # - name: azure-resource-group-required-tags
+  #   resource: terraform.azurerm_resource_group
+  #   description: |
+  #     Ensures resource groups have required tags.
+  #     Required tags: environment, owner, cost-center
+  #   filters:
+  #     - or:
+  #       - type: value
+  #         key: tags.environment
+  #         value: absent
+  #       - type: value
+  #         key: tags.owner
+  #         value: absent
+  #       - type: value
+  #         key: tags.cost-center
+  #         value: absent
+  #   metadata:
+  #     severity: LOW
+  #     creator: Stacklet
+
+  # Virtual Network Policies
+  - name: azure-vnet-required-tags
+    resource: terraform.azurerm_virtual_network
+    description: |
+      Ensures virtual networks have required tags.
+      Required tags improve network governance and cost tracking.
+    filters:
+      - or:
+        - type: value
+          key: tags.environment
+          value: absent
+        - type: value
+          key: tags.owner
+          value: absent
+    metadata:
+      severity: LOW
+      creator: Stacklet

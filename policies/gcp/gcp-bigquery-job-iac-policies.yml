@@ -1,0 +1,382 @@
+policies:
+  - name: gcp-bigquery-job-hardcoded-secrets
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery scheduled queries should not contain hardcoded secrets,
+      API keys, passwords, or credentials. Use Secret Manager.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Has params with query
+      - type: value
+        key: params.query
+        op: not-equal
+        value: null
+      # Query contains secret patterns
+      - type: value
+        key: params.query
+        op: regex
+        value: "password|api_key|secret|credential|token|sk_live|pk_live|bearer"
+
+  - name: gcp-bigquery-job-excessive-schedule
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery scheduled queries should not run more frequently than
+      every 15 minutes unless required. Frequent schedules increase costs.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Schedule runs more frequently than 15 minutes
+      - type: value
+        key: schedule
+        op: regex
+        value: "every [1-9] minute|every 1[0-4] minute"
+
+  - name: gcp-bigquery-job-no-notification
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery scheduled queries should configure email notifications
+      for failure alerts and monitoring.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          # No email preferences
+          - type: value
+            key: email_preferences
+            value: absent
+          - type: value
+            key: email_preferences
+            value: null
+
+  - name: gcp-bigquery-job-truncate-write
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery jobs using WRITE_TRUNCATE should be reviewed. Consider
+      WRITE_APPEND for incremental data to avoid data loss.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - type: value
+        key: params.write_disposition
+        value: WRITE_TRUNCATE
+
+  - name: gcp-bigquery-job-no-encryption
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery data transfer configs should use customer-managed
+      encryption keys (CMEK) for destination tables.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: encryption_configuration
+            value: absent
+          - type: value
+            key: encryption_configuration
+            value: null
+
+  - name: gcp-bigquery-job-default-service-account
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery scheduled queries should use custom service accounts
+      with least-privilege instead of default service account.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - or:
+          # No service account specified
+          - type: value
+            key: service_account_name
+            value: absent
+          - type: value
+            key: service_account_name
+            value: null
+
+  - name: gcp-bigquery-job-disabled
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      Disabled BigQuery transfer configs should be removed from
+      infrastructure code to reduce clutter and confusion.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: disabled
+        value: true
+
+  - name: gcp-bigquery-job-select-star
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery queries should select specific columns instead of
+      SELECT * to reduce costs and improve performance.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has query parameter
+      - type: value
+        key: params.query
+        op: not-equal
+        value: null
+      # Query contains SELECT *
+      - type: value
+        key: params.query
+        op: regex
+        value: "SELECT\\s+\\*"
+
+  - name: gcp-bigquery-job-no-partition-filter
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery queries on partitioned tables should filter by
+      partition column to avoid expensive full table scans.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Has query
+      - type: value
+        key: params.query
+        op: not-equal
+        value: null
+      # Query likely accesses large table without partition filter
+      # This is a simplified check - actual implementation would be more complex
+      - not:
+          - type: value
+            key: params.query
+            op: regex
+            value: "WHERE.*_PARTITIONTIME|WHERE.*DATE\\(|BETWEEN.*AND"
+
+  - name: gcp-bigquery-job-order-by-before-limit
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery queries should avoid ORDER BY with LIMIT on large
+      datasets as it requires sorting entire dataset before limiting.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: params.query
+        op: not-equal
+        value: null
+      # Has ORDER BY and LIMIT
+      - type: value
+        key: params.query
+        op: regex
+        value: "ORDER\\s+BY.*LIMIT"
+
+  - name: gcp-bigquery-job-writes-to-public-dataset
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery jobs should not write to publicly accessible datasets
+      to prevent sensitive data exposure.
+    metadata:
+      severity: CRITICAL
+      creator: Stacklet
+    filters:
+      # Destination dataset name suggests public access
+      - type: value
+        key: destination_dataset_id
+        op: regex
+        value: "public|external|shared|open"
+
+  - name: gcp-bigquery-job-no-description
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery scheduled queries should have descriptions explaining
+      their purpose, data sources, and business logic.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          # display_name is generic
+          - type: value
+            key: display_name
+            op: regex
+            value: "^(query|transfer|job|scheduled)[0-9]*$"
+          # Should also check for description field if available
+
+  - name: gcp-bigquery-job-cross-project-access
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery queries accessing tables in other projects should be
+      reviewed for security, availability, and compliance risks.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      - type: value
+        key: params.query
+        op: not-equal
+        value: null
+      # Query references different project
+      - type: value
+        key: params.query
+        op: regex
+        value: "`[a-z][a-z0-9-]{4,28}[a-z0-9]\\."
+
+  - name: gcp-bigquery-job-no-monitoring
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery scheduled queries should configure monitoring via
+      Pub/Sub topic or email notifications for operational visibility.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # No monitoring configured
+      - type: value
+        key: notification_pubsub_topic
+        value: absent
+      - type: value
+        key: email_preferences
+        value: absent
+
+  - name: gcp-bigquery-job-service-account-admin-role
+    resource: terraform.google_project_iam_member
+    description: >
+      Service accounts for BigQuery jobs should not have admin role.
+      Use specific roles like jobUser, dataEditor, dataViewer.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # Service account for jobs
+      - type: value
+        key: member
+        op: regex
+        value: "serviceAccount:.*bigquery.*job"
+      # Has admin role
+      - type: value
+        key: role
+        op: in
+        value:
+          - roles/bigquery.admin
+          - roles/editor
+          - roles/owner
+
+  - name: gcp-bigquery-job-no-destination-template
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery scheduled queries should use dynamic destination table
+      names with templates like {run_date} for time-series data.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      # Has scheduled query
+      - type: value
+        key: data_source_id
+        value: scheduled_query
+      # Destination table doesn't use template variables
+      - not:
+          - type: value
+            key: params.destination_table_name_template
+            op: regex
+            value: "\\{run_date\\}|\\{run_time\\}"
+
+  - name: gcp-bigquery-job-append-without-dedup
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery jobs using WRITE_APPEND should include deduplication
+      logic to prevent duplicate records on retry or replay.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # Uses WRITE_APPEND
+      - type: value
+        key: params.write_disposition
+        value: WRITE_APPEND
+      # Query doesn't have DISTINCT or GROUP BY for deduplication
+      - not:
+          - type: value
+            key: params.query
+            op: regex
+            value: "DISTINCT|GROUP BY|ROW_NUMBER\\(\\)"
+
+  - name: gcp-bigquery-job-no-error-handling
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery scheduled queries should have error handling and
+      notification configuration for operational resilience.
+    metadata:
+      severity: MEDIUM
+      creator: Stacklet
+    filters:
+      # No notification mechanisms
+      - type: value
+        key: notification_pubsub_topic
+        value: absent
+      - type: value
+        key: email_preferences
+        value: absent
+
+  - name: gcp-bigquery-job-hourly-full-scan
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery jobs running hourly or more frequently should not
+      perform full table scans. Use incremental patterns.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      # Runs hourly or more frequently
+      - type: value
+        key: schedule
+        op: regex
+        value: "every hour|every [0-9]+ minute"
+      # Query likely does full table scan (no WHERE clause with date filter)
+      - not:
+          - type: value
+            key: params.query
+            op: regex
+            value: "WHERE.*timestamp|WHERE.*date|WHERE.*created_at"
+
+  - name: gcp-bigquery-job-sensitive-column-names
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery queries should not select columns with sensitive data
+      (SSN, credit card, password) without proper data masking.
+    metadata:
+      severity: HIGH
+      creator: Stacklet
+    filters:
+      - type: value
+        key: params.query
+        op: not-equal
+        value: null
+      # Query selects sensitive columns
+      - type: value
+        key: params.query
+        op: regex
+        value: "ssn|social_security|credit_card|password|secret|api_key"
+
+  - name: gcp-bigquery-job-inefficient-join
+    resource: terraform.google_bigquery_data_transfer_config
+    description: >
+      BigQuery queries should optimize JOIN operations by filtering
+      before joining and using appropriate JOIN types.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - type: value
+        key: params.query
+        op: not-equal
+        value: null
+      # Has JOIN but no WHERE clause before it (simplified check)
+      - type: value
+        key: params.query
+        op: regex
+        value: "FROM.*JOIN.*WHERE|JOIN.*JOIN.*JOIN"

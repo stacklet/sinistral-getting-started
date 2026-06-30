@@ -1,0 +1,12 @@
+policies:
+ - name: aws-check-for-mandatory-tags
+   resource: "terraform.aws*"
+   description: "Checks AWS resources for mandatory tags"
+   metadata:
+    severity: LOW
+   filters:
+     - taggable
+     - or:
+       - tag:Name: absent
+       - tag:Application: absent
+       - tag:Environment: absent

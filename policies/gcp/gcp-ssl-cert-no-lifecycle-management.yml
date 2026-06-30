@@ -1,0 +1,17 @@
+policies:
+  - name: gcp-ssl-cert-no-lifecycle-management
+    resource: terraform.google_compute_ssl_certificate
+    description: >
+      SSL certificates should have lifecycle management configured
+      with create_before_destroy for zero-downtime certificate rotation.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: lifecycle
+            value: absent
+          - type: value
+            key: lifecycle[0].create_before_destroy
+            value: false

@@ -1,0 +1,16 @@
+policies:
+  - name: acm-missing-dns-validation
+    resource: terraform.aws_acm_certificate
+    description: >
+      ACM certificates must use DNS validation
+    metadata:
+      category:
+        - acm
+      severity: HIGH
+    mode:
+      type: terraform-source
+    filters:
+      - type: value
+        op: not-equal
+        key: validation_method
+        value: DNS

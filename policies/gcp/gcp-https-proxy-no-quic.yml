@@ -1,0 +1,18 @@
+policies:
+  - name: gcp-https-proxy-no-quic
+    resource: terraform.google_compute_target_https_proxy
+    description: >
+      HTTPS proxies should enable QUIC (HTTP/3) for improved
+      performance and modern protocol support.
+    metadata:
+      severity: LOW
+      creator: Stacklet
+    filters:
+      - or:
+          - type: value
+            key: quic_override
+            value: absent
+          - type: value
+            key: quic_override
+            op: not-equal
+            value: ENABLE

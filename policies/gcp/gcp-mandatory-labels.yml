@@ -1,0 +1,18 @@
+policies:
+ - name: gcp-resources-mandatory-labels
+   resource: "terraform.google*"
+   description: "Checks GCP resources for mandatory tags"
+   metadata:
+    severity: LOW
+   filters:
+    - or:
+      - not:
+          - op: contains
+            type: value
+            value: application name
+            key: labels
+      - not:
+          - op: contains
+            type: value
+            value: environment
+            key: labels
